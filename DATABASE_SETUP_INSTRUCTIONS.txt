@@ -1,0 +1,70 @@
+════════════════════════════════════════════════════════════════════════════════
+🗄️  SUPABASE DATABASE SETUP - COPY AND PASTE THIS SQL
+════════════════════════════════════════════════════════════════════════════════
+
+📋 INSTRUCTIONS:
+
+1. Open your Supabase Dashboard: https://app.supabase.com
+2. Select your project: fqnprailkyqxbreqzmoj
+3. Click "SQL Editor" in the left sidebar
+4. Click "New Query"
+5. Copy the SQL code below
+6. Paste it into the SQL editor
+7. Click "RUN" button (or press Cmd/Ctrl + Enter)
+8. You should see: "Success. No rows returned"
+
+════════════════════════════════════════════════════════════════════════════════
+
+-- Create regulatory_updates table
+CREATE TABLE IF NOT EXISTS regulatory_updates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    source TEXT NOT NULL,
+    published_at TIMESTAMPTZ,
+    summary TEXT,
+    raw_content TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    is_processed BOOLEAN DEFAULT FALSE
+);
+
+-- Create indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_regulatory_updates_source ON regulatory_updates(source);
+CREATE INDEX IF NOT EXISTS idx_regulatory_updates_created_at ON regulatory_updates(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_regulatory_updates_is_processed ON regulatory_updates(is_processed);
+CREATE INDEX IF NOT EXISTS idx_regulatory_updates_published_at ON regulatory_updates(published_at DESC);
+
+-- Add comments for documentation
+COMMENT ON TABLE regulatory_updates IS 'Stores regulatory updates from various sources (RBI, SEBI, etc.)';
+COMMENT ON COLUMN regulatory_updates.url IS 'Unique URL - used for deduplication';
+COMMENT ON COLUMN regulatory_updates.is_processed IS 'Flag for Layer 2 AI processing status';
+COMMENT ON COLUMN regulatory_updates.raw_content IS 'Full content for AI processing in Layer 2';
+
+════════════════════════════════════════════════════════════════════════════════
+
+✅ VERIFICATION:
+
+After running the SQL, verify the table was created:
+
+1. Go to "Table Editor" in Supabase
+2. You should see "regulatory_updates" in the list of tables
+3. Click on it to see the table structure
+
+════════════════════════════════════════════════════════════════════════════════
+
+🧪 TEST THE SYSTEM:
+
+Once the table is created, test that everything works:
+
+1. Visit: https://glomopay--ai-powered-regulatory-monitoring-tool.preview.emergentagent.com
+2. Go to "Manual Entry" tab
+3. Add a test regulatory update
+4. Return to "Dashboard" tab to see your update
+
+Or test via API:
+
+curl https://glomopay--ai-powered-regulatory-monitoring-tool.preview.emergentagent.com/api/health
+
+Should return: "status": "healthy", "database": "connected"
+
+════════════════════════════════════════════════════════════════════════════════
