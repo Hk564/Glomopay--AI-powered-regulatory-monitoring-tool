@@ -1,3 +1,49 @@
+# AI Regulatory Monitoring Tool
+
+## 🚀 How to Run
+
+### 1. Import and Run n8n Workflow
+- Open n8n  
+- Click **Import Workflow**  
+- Upload `workflow.json`  
+- Execute the workflow  
+
+---
+
+### 2. View the Application
+
+Open the preview link:  
+https://glomopay--ai-powered-regulatory-monitoring-tool.preview.emergentagent.com
+
+---
+
+### 3. Verify Output
+
+- Go to **Data Ingestion** tab → check workflow execution  
+- Go to **Compliance** section → view stored regulatory records  
+- Click on any record → view:
+  - **AI Analysis**
+  - **Feedback**
+
+---
+
+## ⚡ What This Does
+- Fetches regulatory updates (RBI, SEBI)  
+- Processes and stores them  
+- Displays insights with AI analysis  
+
+---
+
+## 📝 Note
+- Workflow execution reflects in the UI in real-time  
+
+
+
+
+
+
+
+
 # Regulatory Monitoring System - Layer 1: Data Ingestion
 
 ![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
