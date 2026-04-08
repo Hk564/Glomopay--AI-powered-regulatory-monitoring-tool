@@ -4,6 +4,80 @@ import './App.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
+// Quality Feedback Form Component
+function QualityFeedbackForm({ onSubmit, onCancel }) {
+  const [selectedIssues, setSelectedIssues] = useState([]);
+  const [comment, setComment] = useState('');
+
+  const issueOptions = [
+    { value: 'summary_unclear', label: 'Summary unclear' },
+    { value: 'impact_incorrect', label: 'Impact assessment incorrect' },
+    { value: 'action_items_missing', label: 'Action items missing or incomplete' },
+    { value: 'too_generic', label: 'Too generic / not specific enough' },
+    { value: 'missed_key_point', label: 'Missed a key point' }
+  ];
+
+  const toggleIssue = (issue) => {
+    if (selectedIssues.includes(issue)) {
+      setSelectedIssues(selectedIssues.filter(i => i !== issue));
+    } else {
+      setSelectedIssues([...selectedIssues, issue]);
+    }
+  };
+
+  const handleSubmit = () => {
+    onSubmit(false, selectedIssues.length > 0 ? selectedIssues : null, comment || null);
+  };
+
+  return (
+    <div className="space-y-4 mt-4">
+      <p className="text-sm text-gray-700 font-medium">What could be improved? (Select all that apply)</p>
+      
+      <div className="space-y-2">
+        {issueOptions.map(option => (
+          <label key={option.value} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+            <input
+              type="checkbox"
+              checked={selectedIssues.includes(option.value)}
+              onChange={() => toggleIssue(option.value)}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">{option.label}</span>
+          </label>
+        ))}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Additional comments (optional)
+        </label>
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows="3"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="Tell us more about what could be improved..."
+        />
+      </div>
+
+      <div className="flex space-x-3">
+        <button
+          onClick={handleSubmit}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+        >
+          Submit Feedback
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors font-medium text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [updates, setUpdates] = useState([]);
   const [stats, setStats] = useState(null);
@@ -14,6 +88,12 @@ function App() {
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedUpdate, setSelectedUpdate] = useState(null);
   const [aiAnalysis, setAiAnalysis] = useState(null);
+
+  // Feedback state
+  const [showRelevanceFeedback, setShowRelevanceFeedback] = useState(false);
+  const [showQualityFeedback, setShowQualityFeedback] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [existingFeedback, setExistingFeedback] = useState(null);
 
   // Form state for manual entry
   const [formData, setFormData] = useState({
@@ -53,10 +133,15 @@ function App() {
   // Fetch AI analysis for a regulatory update
   const fetchAiAnalysis = async (updateId) => {
     setLoading(true);
+    setFeedbackSubmitted(false);
+    setExistingFeedback(null);
     try {
       const response = await axios.get(`${API_URL}/api/ai-analysis/by-update/${updateId}`);
       setAiAnalysis(response.data.data);
       setActiveTab('analysis-detail');
+      
+      // Fetch existing feedback
+      await fetchExistingFeedback(response.data.data.id);
     } catch (err) {
       if (err.response?.status === 404) {
         setError('AI analysis not available for this update yet. Please wait for processing.');
@@ -67,6 +152,58 @@ function App() {
       setLoading(false);
     }
   };
+
+  // Fetch existing feedback
+  const fetchExistingFeedback = async (analysisId) => {
+    try {
+      const response = await axios.get(`${API_URL}/api/ai-feedback/${analysisId}`);
+      if (response.data.has_feedback) {
+        setExistingFeedback(response.data.data);
+        setFeedbackSubmitted(true);
+      }
+    } catch (err) {
+      console.error('Failed to fetch existing feedback:', err);
+    }
+  };
+
+  // Submit relevance feedback
+  const submitRelevanceFeedback = async (approved, correctScore = null, reason = null) => {
+    try {
+      await axios.post(`${API_URL}/api/ai-feedback/relevance`, {
+        ai_analysis_id: aiAnalysis.id,
+        approved,
+        correct_score: correctScore,
+        reason
+      });
+      setSuccessMessage('Thank you for your feedback!');
+      setShowRelevanceFeedback(false);
+      setFeedbackSubmitted(true);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      await fetchExistingFeedback(aiAnalysis.id);
+    } catch (err) {
+      setError('Failed to submit feedback: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  // Submit analysis quality feedback
+  const submitQualityFeedback = async (useful, issueTypes = null, comment = null) => {
+    try {
+      await axios.post(`${API_URL}/api/ai-feedback/analysis-quality`, {
+        ai_analysis_id: aiAnalysis.id,
+        useful,
+        issue_types: issueTypes,
+        comment
+      });
+      setSuccessMessage('Thank you for your feedback!');
+      setShowQualityFeedback(false);
+      setFeedbackSubmitted(true);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      await fetchExistingFeedback(aiAnalysis.id);
+    } catch (err) {
+      setError('Failed to submit feedback: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
 
   // Handle update click
   const handleUpdateClick = async (update) => {
@@ -366,15 +503,92 @@ function App() {
             {/* Feedback Section */}
             <div className="bg-gray-100 rounded-lg p-8">
               <h3 className="text-2xl font-semibold text-gray-800 mb-4">Feedback</h3>
-              <p className="text-gray-600 mb-4">Was this AI analysis helpful? Share your feedback to improve future analyses.</p>
-              <div className="flex space-x-4">
-                <button className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
-                  👍 Helpful
-                </button>
-                <button className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
-                  👎 Needs Improvement
-                </button>
-              </div>
+              
+              {feedbackSubmitted && existingFeedback ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-green-800 font-medium">✓ Thank you for your feedback!</p>
+                  <p className="text-green-700 text-sm mt-1">Your input helps us improve AI analysis quality.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-gray-600 mb-6">Help us improve AI analysis by providing quick feedback</p>
+                  
+                  {/* Relevance Score Feedback */}
+                  <div className="mb-6 bg-white rounded-lg p-6 border border-gray-200">
+                    <h4 className="font-semibold text-gray-800 mb-3">Is the relevance score accurate?</h4>
+                    <div className="flex items-center space-x-3 mb-3">
+                      <span className={`px-4 py-2 rounded-lg text-sm font-semibold ${getRelevanceColor(aiAnalysis.relevance_score)} border`}>
+                        Current: {aiAnalysis.relevance_score}
+                      </span>
+                    </div>
+                    
+                    {!showRelevanceFeedback ? (
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => submitRelevanceFeedback(true)}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                        >
+                          ✓ Yes, correct
+                        </button>
+                        <button
+                          onClick={() => setShowRelevanceFeedback(true)}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium text-sm"
+                        >
+                          ✗ No, incorrect
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 mt-4">
+                        <p className="text-sm text-gray-700 font-medium">What should the correct score be?</p>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {['HIGH', 'MEDIUM', 'LOW', 'NOT_RELEVANT'].map(score => (
+                            <button
+                              key={score}
+                              onClick={() => submitRelevanceFeedback(false, score, null)}
+                              className={`px-4 py-2 rounded-lg border-2 ${getRelevanceColor(score)} hover:opacity-80 transition-opacity font-medium text-sm`}
+                            >
+                              {score}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => setShowRelevanceFeedback(false)}
+                          className="text-sm text-gray-600 hover:text-gray-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Analysis Quality Feedback */}
+                  <div className="bg-white rounded-lg p-6 border border-gray-200">
+                    <h4 className="font-semibold text-gray-800 mb-3">Was this analysis useful?</h4>
+                    
+                    {!showQualityFeedback ? (
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => submitQualityFeedback(true)}
+                          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                        >
+                          👍 Helpful
+                        </button>
+                        <button
+                          onClick={() => setShowQualityFeedback(true)}
+                          className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                        >
+                          👎 Needs Improvement
+                        </button>
+                      </div>
+                    ) : (
+                      <QualityFeedbackForm 
+                        onSubmit={submitQualityFeedback}
+                        onCancel={() => setShowQualityFeedback(false)}
+                      />
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

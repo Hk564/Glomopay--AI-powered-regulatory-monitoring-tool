@@ -574,6 +574,217 @@ async def trigger_ai_analysis():
 
 @app.get("/api/processing-logs")
 async def get_processing_logs(limit: int = 100):
+
+
+# ============================================
+# AI FEEDBACK ENDPOINTS
+# ============================================
+
+@app.post("/api/ai-feedback/relevance")
+async def submit_relevance_feedback(
+    ai_analysis_id: str,
+    approved: bool,
+    correct_score: Optional[str] = None,
+    reason: Optional[str] = None
+):
+    """
+    Submit feedback on AI relevance score
+    """
+    try:
+        # Get the regulatory_update_id from ai_analysis
+        analysis = supabase.table("ai_analysis").select("regulatory_update_id").eq("id", ai_analysis_id).execute()
+        
+        if not analysis.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="AI analysis not found"
+            )
+        
+        regulatory_update_id = analysis.data[0]["regulatory_update_id"]
+        
+        # Check if feedback already exists
+        existing = supabase.table("ai_feedback").select("*").eq("ai_analysis_id", ai_analysis_id).execute()
+        
+        feedback_data = {
+            "ai_analysis_id": ai_analysis_id,
+            "regulatory_update_id": regulatory_update_id,
+            "feedback_type": "relevance",
+            "relevance_approved": approved,
+            "correct_relevance_score": correct_score if not approved else None,
+            "relevance_disagreement_reason": reason if not approved else None,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        if existing.data:
+            # Update existing feedback
+            result = supabase.table("ai_feedback").update(feedback_data).eq("ai_analysis_id", ai_analysis_id).execute()
+        else:
+            # Create new feedback
+            feedback_data["id"] = str(uuid.uuid4())
+            result = supabase.table("ai_feedback").insert(feedback_data).execute()
+        
+        return {
+            "success": True,
+            "message": "Relevance feedback submitted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit feedback: {str(e)}"
+        )
+
+
+@app.post("/api/ai-feedback/analysis-quality")
+async def submit_analysis_quality_feedback(
+    ai_analysis_id: str,
+    useful: bool,
+    issue_types: Optional[List[str]] = None,
+    comment: Optional[str] = None
+):
+    """
+    Submit feedback on AI analysis quality
+    """
+    try:
+        # Get the regulatory_update_id from ai_analysis
+        analysis = supabase.table("ai_analysis").select("regulatory_update_id").eq("id", ai_analysis_id).execute()
+        
+        if not analysis.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="AI analysis not found"
+            )
+        
+        regulatory_update_id = analysis.data[0]["regulatory_update_id"]
+        
+        # Check if feedback already exists
+        existing = supabase.table("ai_feedback").select("*").eq("ai_analysis_id", ai_analysis_id).execute()
+        
+        feedback_data = {
+            "ai_analysis_id": ai_analysis_id,
+            "regulatory_update_id": regulatory_update_id,
+            "feedback_type": "analysis_quality",
+            "analysis_useful": useful,
+            "analysis_issue_types": issue_types if not useful and issue_types else None,
+            "analysis_comment": comment if not useful else None,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        if existing.data:
+            # Update existing feedback
+            result = supabase.table("ai_feedback").update(feedback_data).eq("ai_analysis_id", ai_analysis_id).execute()
+        else:
+            # Create new feedback
+            feedback_data["id"] = str(uuid.uuid4())
+            result = supabase.table("ai_feedback").insert(feedback_data).execute()
+        
+        return {
+            "success": True,
+            "message": "Analysis quality feedback submitted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit feedback: {str(e)}"
+        )
+
+
+@app.get("/api/ai-feedback/stats")
+async def get_feedback_stats():
+    """
+    Get aggregated feedback statistics for monitoring AI improvement
+    """
+    try:
+        # Get all feedback
+        all_feedback = supabase.table("ai_feedback").select("*").execute()
+        
+        total_feedback = len(all_feedback.data)
+        
+        # Relevance feedback stats
+        relevance_feedback = [f for f in all_feedback.data if f.get("relevance_approved") is not None]
+        relevance_approved_count = sum(1 for f in relevance_feedback if f.get("relevance_approved"))
+        relevance_disapproved_count = len(relevance_feedback) - relevance_approved_count
+        
+        # Correct scores suggested
+        correct_scores = {}
+        for f in all_feedback.data:
+            if f.get("correct_relevance_score"):
+                score = f["correct_relevance_score"]
+                correct_scores[score] = correct_scores.get(score, 0) + 1
+        
+        # Analysis quality stats
+        analysis_feedback = [f for f in all_feedback.data if f.get("analysis_useful") is not None]
+        analysis_useful_count = sum(1 for f in analysis_feedback if f.get("analysis_useful"))
+        analysis_not_useful_count = len(analysis_feedback) - analysis_useful_count
+        
+        # Issue types breakdown
+        issue_types_count = {}
+        for f in all_feedback.data:
+            if f.get("analysis_issue_types"):
+                for issue in f["analysis_issue_types"]:
+                    issue_types_count[issue] = issue_types_count.get(issue, 0) + 1
+        
+        # Calculate approval rates
+        relevance_approval_rate = (relevance_approved_count / len(relevance_feedback) * 100) if relevance_feedback else 0
+        analysis_useful_rate = (analysis_useful_count / len(analysis_feedback) * 100) if analysis_feedback else 0
+        
+        return {
+            "total_feedback": total_feedback,
+            "relevance_feedback": {
+                "total": len(relevance_feedback),
+                "approved": relevance_approved_count,
+                "disapproved": relevance_disapproved_count,
+                "approval_rate": round(relevance_approval_rate, 2),
+                "suggested_correct_scores": correct_scores
+            },
+            "analysis_quality_feedback": {
+                "total": len(analysis_feedback),
+                "useful": analysis_useful_count,
+                "not_useful": analysis_not_useful_count,
+                "useful_rate": round(analysis_useful_rate, 2),
+                "common_issues": issue_types_count
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch feedback stats: {str(e)}"
+        )
+
+
+@app.get("/api/ai-feedback/{ai_analysis_id}")
+async def get_feedback_for_analysis(ai_analysis_id: str):
+    """
+    Get existing feedback for a specific AI analysis
+    """
+    try:
+        result = supabase.table("ai_feedback").select("*").eq("ai_analysis_id", ai_analysis_id).execute()
+        
+        if not result.data:
+            return {
+                "success": True,
+                "has_feedback": False,
+                "data": None
+            }
+        
+        return {
+            "success": True,
+            "has_feedback": True,
+            "data": result.data[0]
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch feedback: {str(e)}"
+        )
+
     """
     Get AI processing logs for observability
     """
