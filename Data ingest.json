@@ -1,0 +1,356 @@
+{
+  "name": "Data ingest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -96,
+        0
+      ],
+      "id": "a1cd1dd2-fb2f-41d9-9d8a-ea7195307dda",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://rbi.org.in/Scripts/NotificationUser.aspx",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        160,
+        0
+      ],
+      "id": "6ad90f1f-845b-47b5-aa02-21f3318e09a3",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $json.data;\n\nconst rows = [...html.matchAll(/<tr[\\s\\S]*?<\\/tr>/gi)];\n\nlet results = [];\n\nrows.forEach(rowMatch => {\n  const row = rowMatch[0];\n\n  // Extract PDF link\n  const linkMatch = row.match(/href=\"(.*?\\.pdf)\"/i);\n\n  if (linkMatch) {\n    let link = linkMatch[1];\n\n    if (!link.startsWith('http')) {\n      link = 'https://www.rbi.org.in' + link;\n    }\n\n    // Extract title → remove all tags, keep text\n    let cleanText = row\n      .replace(/<[^>]*>/g, ' ')   // remove HTML tags\n      .replace(/\\s+/g, ' ')       // normalize spaces\n      .trim();\n\n    // Remove date + file size noise (optional cleanup)\n    cleanText = cleanText\n      .replace(/Apr \\d{2}, \\d{4}/i, '')\n      .replace(/\\d+\\s*kb/i, '')\n      .trim();\n\n    results.push({\n      title: cleanText,\n      url: link\n    });\n  }\n});\n\n// dedup\nconst unique = Array.from(new Map(results.map(item => [item.url, item])).values());\n\nreturn unique.slice(0, 10).map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        0
+      ],
+      "id": "ff1a2aff-0053-4b63-9842-0cf301524249",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "https://www.rbi.org.in/notifications_rss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        224
+      ],
+      "id": "5b2a65a4-1892-4fb1-baa5-dd12a345ccd1",
+      "name": "RSS Read"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  return {\n    json: {\n      title: item.json.title,\n      url: item.json.link,\n      source: \"RBI_RSS\",\n      published_at: item.json.pubDate,\n\n      // optional: extract short clean text\n      summary: item.json.content\n        ?.replace(/<[^>]*>/g, ' ')   // remove HTML\n        .replace(/\\s+/g, ' ')\n        .trim()\n        .slice(0, 300) // keep short\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        240
+      ],
+      "id": "dc84dc63-feec-4414-b85b-ce36b3f0e03e",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "content": "RBI  and SEBI Notification - data ingestion through a \n1. simple monitoring for every hour \n2.RSS feed flow "
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -416,
+        240
+      ],
+      "typeVersion": 1,
+      "id": "6faea0d2-e7e8-4cef-8c6b-6d5e927ede68",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        640,
+        144
+      ],
+      "id": "6208f3e3-c65a-4f48-add0-830eabbb02a0",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://compliance-pulse-16.preview.emergentagent.com/api/ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{$json.title}}\",\n  \"url\": \"{{$json.link || $json.url || $json.guid}}\",\n  \"source\": \"{{$json.source || 'RBI'}}\",\n  \"published_at\": \"{{$json.published_at}}\",\n  \"summary\": \"{{$json.ai_summary || $json.summary}}\",\n  \"raw_content\": \"{{$json.summary}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        992,
+        144
+      ],
+      "id": "bc3fcfef-4f99-4170-b3f2-221668af27a3",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FUZZY DEDUP BY TITLE (handles messy real-world data)\n\nfunction similarity(a, b) {\n  const longer = a.length > b.length ? a : b;\n  const shorter = a.length > b.length ? b : a;\n\n  const longerLength = longer.length;\n  if (longerLength === 0) return 1.0;\n\n  return (longerLength - editDistance(longer, shorter)) / longerLength;\n}\n\nfunction editDistance(a, b) {\n  const matrix = [];\n\n  for (let i = 0; i <= b.length; i++) matrix[i] = [i];\n  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;\n\n  for (let i = 1; i <= b.length; i++) {\n    for (let j = 1; j <= a.length; j++) {\n      if (b.charAt(i - 1) === a.charAt(j - 1)) {\n        matrix[i][j] = matrix[i - 1][j - 1];\n      } else {\n        matrix[i][j] = Math.min(\n          matrix[i - 1][j - 1] + 1,\n          matrix[i][j - 1] + 1,\n          matrix[i - 1][j] + 1\n        );\n      }\n    }\n  }\n\n  return matrix[b.length][a.length];\n}\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n\n  const rawTitle = (data.title || \"\").trim();\n  const link = (data.link || data.url || data.guid || \"\").trim();\n\n  if (!rawTitle || !link) continue;\n\n  // --- CLEAN TITLE ---\n  const cleanedTitle = rawTitle\n    .replace(/<[^>]*>/g, \"\")\n    .replace(/style=.*?[\"']/g, \"\")\n    .replace(/src=.*?[\"']/g, \"\")\n    .replace(/&[^;]+;/g, \" \")\n    .replace(/[^a-zA-Z0-9 ]/g, \" \")\n    .toLowerCase()\n    .replace(/\\s+/g, \" \")\n    .trim();\n\n  let isDuplicate = false;\n\n  for (const existing of results) {\n    const score = similarity(cleanedTitle, existing.json._normalizedTitle);\n\n    if (score > 0.85) {\n      isDuplicate = true;\n\n      // Prefer RSS\n      if (data.source === \"RBI_RSS\" && existing.json.source !== \"RBI_RSS\") {\n        existing.json = {\n          ...existing.json,\n          ...item.json,\n          title: cleanedTitle\n        };\n      }\n\n      break;\n    }\n  }\n\n  if (!isDuplicate) {\n    results.push({\n      json: {\n        ...item.json,\n        title: cleanedTitle,\n        _normalizedTitle: cleanedTitle, // internal use\n        created_at: new Date().toISOString()\n      }\n    });\n  }\n}\n\n// remove helper field\nreturn results.map(item => {\n  delete item.json._normalizedTitle;\n  return item;\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        144
+      ],
+      "id": "2d8bad6a-fb28-4113-84da-f1a8a2d2421a",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=1&ssid=7&smid=0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        160,
+        464
+      ],
+      "id": "c9eb42f1-584d-438a-941c-29bd2fd3cae9",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $json.data;\n\n// Extract all anchor tags\nconst links = [...html.matchAll(/<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)<\\/a>/gi)];\n\nlet results = [];\n\nlinks.forEach(match => {\n  let url = match[1];\n  let title = match[2];\n\n  // Clean title\n  title = title\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  // Skip invalid links\n  if (!url || url.includes('#') || url.includes('javascript')) return;\n\n  // Normalize URL\n  if (!url.startsWith('http')) {\n    url = 'https://www.sebi.gov.in' + url;\n  }\n\n  // Keep only relevant circulars\n  if (\n    url.includes('circular') ||\n    url.includes('legal') ||\n    url.endsWith('.pdf')\n  ) {\n    // Avoid weak titles\n    if (title.length < 25) return;\n\n    results.push({\n      title,\n      url,\n      source: \"SEBI\"\n    });\n  }\n});\n\n// Deduplicate\nconst unique = Array.from(\n  new Map(results.map(item => [item.url, item])).values()\n);\n\n// Limit\nreturn unique.slice(0, 10).map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        464
+      ],
+      "id": "9b3ae6f5-7f35-4a57-b22d-5dc2545b3ecf",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "url": "https://www.sebi.gov.in/sebirss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        672
+      ],
+      "id": "f2ac7074-70b7-4f69-a6c0-ab2570c28c52",
+      "name": "RSS Read1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const content = item.json.content || item.json.contentSnippet || \"\";\n\n  return {\n    json: {\n      title: item.json.title || \"\",\n      url: item.json.link || item.json.guid || \"\",\n      source: \"SEBI_RSS\", // change to \"RBI_RSS\" for RBI flow\n      published_at: item.json.pubDate || \"\",\n\n      summary: content\n        .replace(/<[^>]*>/g, ' ')   // remove HTML\n        .replace(/\\s+/g, ' ')       // normalize spaces\n        .trim()\n        .slice(0, 300)\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        672
+      ],
+      "id": "3db024fe-69a4-4d57-bd40-66cabdffd729",
+      "name": "Code in JavaScript4"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "fd4157a9-4dbe-4701-b23a-5c747cc07f52",
+  "meta": {
+    "instanceId": "2c4a746e5a6c17193e0f796e5d16af2ff94ff07093e716eb71a05657d3061179"
+  },
+  "id": "eQGiIsqVKyV04Ahm",
+  "tags": []
+}
