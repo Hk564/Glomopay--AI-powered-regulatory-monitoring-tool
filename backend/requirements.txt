@@ -5,3 +5,4 @@ supabase==2.10.0
 pydantic==2.10.3
 python-multipart==0.0.20
 cors==1.0.1
+emergentintegrations==0.1.0

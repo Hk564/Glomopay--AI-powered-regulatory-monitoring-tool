@@ -368,3 +368,226 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
+
+
+
+# ============================================
+# AI ANALYSIS ENDPOINTS (LAYER 2)
+# ============================================
+
+@app.get("/api/ai-analysis")
+async def get_ai_analysis(
+    limit: int = 50,
+    offset: int = 0,
+    relevance_score: Optional[str] = None
+):
+    """
+    Get AI analysis results with optional filtering
+    """
+    try:
+        query = supabase.table("ai_analysis").select("""
+            *,
+            regulatory_updates:regulatory_update_id (
+                title,
+                url,
+                source,
+                published_at
+            )
+        """)
+        
+        # Apply filters
+        if relevance_score:
+            query = query.eq("relevance_score", relevance_score)
+        
+        # Apply pagination and ordering
+        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        
+        return {
+            "success": True,
+            "count": len(result.data),
+            "data": result.data
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch AI analysis: {str(e)}"
+        )
+
+
+@app.get("/api/ai-analysis/{analysis_id}")
+async def get_single_analysis(analysis_id: str):
+    """
+    Get a single AI analysis by ID
+    """
+    try:
+        result = supabase.table("ai_analysis").select("""
+            *,
+            regulatory_updates:regulatory_update_id (
+                id,
+                title,
+                url,
+                source,
+                published_at,
+                summary,
+                raw_content
+            )
+        """).eq("id", analysis_id).execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="AI analysis not found"
+            )
+        
+        return {
+            "success": True,
+            "data": result.data[0]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch AI analysis: {str(e)}"
+        )
+
+
+@app.get("/api/ai-analysis/by-update/{regulatory_update_id}")
+async def get_analysis_by_update(regulatory_update_id: str):
+    """
+    Get AI analysis for a specific regulatory update
+    """
+    try:
+        result = supabase.table("ai_analysis").select("""
+            *,
+            regulatory_updates:regulatory_update_id (
+                id,
+                title,
+                url,
+                source,
+                published_at,
+                summary
+            )
+        """).eq("regulatory_update_id", regulatory_update_id).execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No AI analysis found for this regulatory update"
+            )
+        
+        return {
+            "success": True,
+            "data": result.data[0]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch AI analysis: {str(e)}"
+        )
+
+
+@app.get("/api/ai-analysis-stats")
+async def get_ai_analysis_stats():
+    """
+    Get statistics about AI analysis
+    """
+    try:
+        # Get total analysis
+        total = supabase.table("ai_analysis").select("*", count="exact").execute()
+        total_count = total.count if hasattr(total, 'count') else len(total.data)
+        
+        # Get by relevance score
+        all_analysis = supabase.table("ai_analysis").select("relevance_score").execute()
+        by_relevance = {}
+        for item in all_analysis.data:
+            score = item.get("relevance_score", "UNKNOWN")
+            by_relevance[score] = by_relevance.get(score, 0) + 1
+        
+        # Get processing status
+        all_status = supabase.table("ai_analysis").select("processing_status").execute()
+        by_status = {}
+        for item in all_status.data:
+            status_val = item.get("processing_status", "unknown")
+            by_status[status_val] = by_status.get(status_val, 0) + 1
+        
+        # Get unprocessed count
+        total_updates = supabase.table("regulatory_updates").select("*", count="exact").execute()
+        total_updates_count = total_updates.count if hasattr(total_updates, 'count') else len(total_updates.data)
+        unprocessed = total_updates_count - total_count
+        
+        return {
+            "total_analyzed": total_count,
+            "by_relevance_score": by_relevance,
+            "by_processing_status": by_status,
+            "unprocessed_updates": unprocessed,
+            "total_regulatory_updates": total_updates_count
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch AI analysis stats: {str(e)}"
+        )
+
+
+@app.post("/api/trigger-ai-analysis")
+async def trigger_ai_analysis():
+    """
+    Manually trigger AI analysis processing
+    (In addition to the hourly cron job)
+    """
+    try:
+        import subprocess
+        
+        # Run the AI processor script
+        result = subprocess.run(
+            ["/root/.venv/bin/python", "/app/backend/ai_processor.py"],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        return {
+            "success": True,
+            "message": "AI analysis processing triggered",
+            "output": result.stdout,
+            "errors": result.stderr if result.stderr else None
+        }
+        
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            detail="AI processing timed out after 5 minutes"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to trigger AI analysis: {str(e)}"
+        )
+
+
+@app.get("/api/processing-logs")
+async def get_processing_logs(limit: int = 100):
+    """
+    Get AI processing logs for observability
+    """
+    try:
+        result = supabase.table("ai_processing_logs").select("*").order("created_at", desc=True).limit(limit).execute()
+        
+        return {
+            "success": True,
+            "count": len(result.data),
+            "data": result.data
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch processing logs: {str(e)}"
+        )
