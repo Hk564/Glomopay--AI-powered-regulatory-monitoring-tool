@@ -1,0 +1,50 @@
+================================================================================
+TESTING GUIDE - Which Records Have AI Analysis
+================================================================================
+
+✅ RECORDS WITH AI ANALYSIS (Safe to click for testing):
+
+1. certificate no rc9076 of 2026 notice of demand in respect of
+   ID: 70b6adfe-d979-4f08-bf68-c89b2987dfe4
+   is_processed: True
+
+2. appeal no 6796 of 2026 filed by unnikrishnan m s
+   ID: fd3415c5-1968-4ff2-8b9f-4be9a2f8dac5
+   is_processed: True
+
+3. appeal no 6800 6801 of 2026 filed by ganga prasad
+   ID: 50b606b2-7957-4c18-88d3-c2fd99914469
+   is_processed: True
+
+4. completion of recovery certificate seva bhavan private limit
+   ID: 578898f6-af04-43e0-9556-994683e468b3
+   is_processed: True
+
+5. notice of demands dated april 02 2026 issued under recovery 
+   ID: 09c6af49-0e1b-42f2-a1b8-aa56ff388d84
+   is_processed: True
+
+
+(Showing 5 of 24 total analyzed records)
+
+================================================================================
+❌ RECORDS WITHOUT AI ANALYSIS (Will show error):
+
+1. addendum to sebi circular on borrowing by mutual funds
+   ID: bad73518-0b34-44e3-aea6-9c3e2337ced2
+
+2. ex parte interim order in the matter of elitecon internation
+   ID: 8486af43-b216-4526-b8a9-cfbeea519bc3
+
+3. appeal no 6792 of 2026 filed by aashish pal
+   ID: ed2a1dc9-2cb3-4b3e-8ce6-c8e0324c357d
+
+4. appeal no 6795 of 2026 filed by rajat kumar
+   ID: 433348d6-4949-4e3e-b68c-4335d6b54fe1
+
+5. sebi order for compliance release of attachment on immovable
+   ID: eaad34e9-33d5-4ae9-96c8-12abc5fe9aff
+
+
+(Showing 5 of 24 unanalyzed records)
+================================================================================
