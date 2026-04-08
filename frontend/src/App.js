@@ -149,6 +149,26 @@ function App() {
 
   // Fetch AI analysis for a regulatory update
   const fetchAiAnalysis = async (updateId) => {
+    setLoading(true);
+    setFeedbackSubmitted(false);
+    setExistingFeedback(null);
+    try {
+      const response = await axios.get(`${API_URL}/api/ai-analysis/by-update/${updateId}`);
+      setAiAnalysis(response.data.data);
+      setActiveTab('analysis-detail');
+      
+      // Fetch existing feedback
+      await fetchExistingFeedback(response.data.data.id);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setError('AI analysis not available for this update yet. Please wait for processing.');
+      } else {
+        setError('Failed to fetch AI analysis: ' + (err.response?.data?.detail || err.message));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handle Fetch Now button (ADD-ON feature)
   const handleFetchNow = async () => {
@@ -168,27 +188,6 @@ function App() {
       setError('Fetch failed: ' + (err.response?.data?.detail || err.message));
     } finally {
       setFetchingNow(false);
-    }
-  };
-
-    setLoading(true);
-    setFeedbackSubmitted(false);
-    setExistingFeedback(null);
-    try {
-      const response = await axios.get(`${API_URL}/api/ai-analysis/by-update/${updateId}`);
-      setAiAnalysis(response.data.data);
-      setActiveTab('analysis-detail');
-      
-      // Fetch existing feedback
-      await fetchExistingFeedback(response.data.data.id);
-    } catch (err) {
-      if (err.response?.status === 404) {
-        setError('AI analysis not available for this update yet. Please wait for processing.');
-      } else {
-        setError('Failed to fetch AI analysis: ' + (err.response?.data?.detail || err.message));
-      }
-    } finally {
-      setLoading(false);
     }
   };
 
