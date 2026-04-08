@@ -83,7 +83,7 @@ function App() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, manual-entry, analysis-detail
+  const [activeTab, setActiveTab] = useState('data-ingestion'); // data-ingestion, compliance-dashboard, manual-entry, analysis-detail
   const [filterSource, setFilterSource] = useState('all');
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedUpdate, setSelectedUpdate] = useState(null);
@@ -213,7 +213,7 @@ function App() {
 
   // Go back to dashboard
   const goBackToDashboard = () => {
-    setActiveTab('dashboard');
+    setActiveTab('compliance-dashboard');
     setSelectedUpdate(null);
     setAiAnalysis(null);
   };
@@ -348,15 +348,26 @@ function App() {
           <div className="container mx-auto px-4">
             <nav className="flex space-x-8">
               <button
-                onClick={() => setActiveTab('dashboard')}
+                onClick={() => setActiveTab('data-ingestion')}
                 className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === 'dashboard'
+                  activeTab === 'data-ingestion'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
-                data-testid="dashboard-tab"
+                data-testid="data-ingestion-tab"
               >
-                Dashboard
+                Data Ingestion
+              </button>
+              <button
+                onClick={() => setActiveTab('compliance-dashboard')}
+                className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'compliance-dashboard'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+                data-testid="compliance-dashboard-tab"
+              >
+                Compliance Dashboard
               </button>
               <button
                 onClick={() => setActiveTab('manual-entry')}
@@ -593,9 +604,9 @@ function App() {
           </div>
         )}
 
-        {/* Dashboard Tab */}
-        {activeTab === 'dashboard' && (
-          <div data-testid="dashboard-content">
+        {/* Data Ingestion Tab */}
+        {activeTab === 'data-ingestion' && (
+          <div data-testid="data-ingestion-content">
             {/* Statistics Cards */}
             {stats && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" data-testid="stats-cards">
@@ -632,7 +643,12 @@ function App() {
                 </div>
               </div>
             )}
+          </div>
+        )}
 
+        {/* Compliance Dashboard Tab */}
+        {activeTab === 'compliance-dashboard' && (
+          <div data-testid="compliance-dashboard-content">
             {/* Filters */}
             <div className="bg-white rounded-lg shadow p-6 mb-6" data-testid="filters-section">
               <div className="flex items-center justify-between">
