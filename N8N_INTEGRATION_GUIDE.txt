@@ -1,0 +1,163 @@
+═══════════════════════════════════════════════════════════════════════════
+🔗 CORRECT URL FOR n8n INTEGRATION
+═══════════════════════════════════════════════════════════════════════════
+
+✅ WORKING URL FOR n8n WEBHOOK:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+POST https://compliance-pulse-16.preview.emergentagent.com/api/ingest
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+═══════════════════════════════════════════════════════════════════════════
+📋 n8n CONFIGURATION
+═══════════════════════════════════════════════════════════════════════════
+
+Step 1: Add HTTP Request Node in n8n
+───────────────────────────────────────────────────────────────────────────
+Method: POST
+URL: https://compliance-pulse-16.preview.emergentagent.com/api/ingest
+Authentication: None
+Content Type: application/json
+
+
+Step 2: Request Body (Single Update)
+───────────────────────────────────────────────────────────────────────────
+{
+  "title": "{{ $json.title }}",
+  "url": "{{ $json.url }}",
+  "source": "RBI",
+  "published_at": "{{ $json.published_at }}",
+  "summary": "{{ $json.summary }}",
+  "raw_content": "{{ $json.raw_content }}"
+}
+
+
+Step 3: Request Body (Batch Updates)
+───────────────────────────────────────────────────────────────────────────
+{
+  "updates": [
+    {
+      "title": "{{ $json.item1.title }}",
+      "url": "{{ $json.item1.url }}",
+      "source": "RBI",
+      "published_at": "{{ $json.item1.published_at }}",
+      "summary": "{{ $json.item1.summary }}",
+      "raw_content": "{{ $json.item1.raw_content }}"
+    },
+    {
+      "title": "{{ $json.item2.title }}",
+      "url": "{{ $json.item2.url }}",
+      "source": "SEBI",
+      "published_at": "{{ $json.item2.published_at }}",
+      "summary": "{{ $json.item2.summary }}",
+      "raw_content": "{{ $json.item2.raw_content }}"
+    }
+  ]
+}
+
+
+Step 4: Expected Response
+───────────────────────────────────────────────────────────────────────────
+{
+  "success": true,
+  "message": "Processed 1 updates",
+  "inserted_count": 1,
+  "duplicate_count": 0,
+  "failed_count": 0,
+  "details": [
+    {
+      "url": "https://rbi.org.in/...",
+      "status": "inserted",
+      "id": "uuid-here"
+    }
+  ]
+}
+
+═══════════════════════════════════════════════════════════════════════════
+🧪 TEST YOUR n8n INTEGRATION
+═══════════════════════════════════════════════════════════════════════════
+
+Test with cURL (Copy and paste this in terminal):
+───────────────────────────────────────────────────────────────────────────
+curl -X POST https://compliance-pulse-16.preview.emergentagent.com/api/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Test RBI Circular",
+    "url": "https://rbi.org.in/test/unique-url-123",
+    "source": "RBI",
+    "published_at": "2024-01-15",
+    "summary": "Test summary",
+    "raw_content": "Full content here"
+  }'
+
+Expected Result:
+───────────────────────────────────────────────────────────────────────────
+{
+  "success": true,
+  "message": "Processed 1 updates",
+  "inserted_count": 1,
+  "duplicate_count": 0,
+  "failed_count": 0,
+  "details": [ ... ]
+}
+
+═══════════════════════════════════════════════════════════════════════════
+📊 OTHER ENDPOINTS
+═══════════════════════════════════════════════════════════════════════════
+
+Health Check:
+https://compliance-pulse-16.preview.emergentagent.com/api/health
+
+Get All Updates:
+https://compliance-pulse-16.preview.emergentagent.com/api/regulatory-updates
+
+Get Statistics:
+https://compliance-pulse-16.preview.emergentagent.com/api/stats
+
+Frontend Dashboard:
+https://compliance-pulse-16.preview.emergentagent.com
+
+═══════════════════════════════════════════════════════════════════════════
+✅ REQUIRED FIELDS FOR n8n
+═══════════════════════════════════════════════════════════════════════════
+
+REQUIRED:
+  • title     (string)  - Title of the regulatory update
+  • url       (string)  - Unique URL (used for deduplication)
+  • source    (string)  - "RBI" or "SEBI"
+
+OPTIONAL:
+  • published_at  (string) - ISO date or any date format
+  • summary       (string) - Brief summary
+  • raw_content   (string) - Full content for AI processing
+
+═══════════════════════════════════════════════════════════════════════════
+🔄 DEDUPLICATION
+═══════════════════════════════════════════════════════════════════════════
+
+The system automatically prevents duplicates based on URL.
+
+If you send the same URL twice:
+  • First time: inserted_count = 1
+  • Second time: duplicate_count = 1 (NOT inserted again)
+
+This is NORMAL and EXPECTED behavior!
+
+═══════════════════════════════════════════════════════════════════════════
+❓ TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════
+
+Problem: Getting 404 error
+Solution: Make sure you're using the CORRECT URL:
+          https://compliance-pulse-16.preview.emergentagent.com/api/ingest
+          (NOT the glomopay--ai-powered URL)
+
+Problem: "Field required" error
+Solution: Ensure title, url, and source fields are present
+
+Problem: All updates showing as "duplicate"
+Solution: This means the URLs already exist in database
+          Check if your scraper is sending the same URLs repeatedly
+
+═══════════════════════════════════════════════════════════════════════════
