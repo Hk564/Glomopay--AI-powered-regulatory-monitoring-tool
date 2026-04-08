@@ -574,6 +574,23 @@ async def trigger_ai_analysis():
 
 @app.get("/api/processing-logs")
 async def get_processing_logs(limit: int = 100):
+    """
+    Get AI processing logs for observability
+    """
+    try:
+        result = supabase.table("ai_processing_logs").select("*").order("created_at", desc=True).limit(limit).execute()
+        
+        return {
+            "success": True,
+            "count": len(result.data),
+            "data": result.data
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch processing logs: {str(e)}"
+        )
 
 
 # ============================================
