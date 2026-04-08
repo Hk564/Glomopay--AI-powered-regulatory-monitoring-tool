@@ -85,6 +85,12 @@ function App() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('data-ingestion'); // data-ingestion, compliance-dashboard, manual-entry, analysis-detail
   const [filterSource, setFilterSource] = useState('all');
+  // Extended filter states (ADD-ON)
+  const [filterRelevance, setFilterRelevance] = useState('all');
+  const [filterReviewStatus, setFilterReviewStatus] = useState('all');
+  const [fetchingNow, setFetchingNow] = useState(false);
+  const [fetchMessage, setFetchMessage] = useState('');
+
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedUpdate, setSelectedUpdate] = useState(null);
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -105,14 +111,25 @@ function App() {
     raw_content: ''
   });
 
-  // Fetch updates
+  // Fetch updates (EXTENDED with new filters)
   const fetchUpdates = async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = filterSource !== 'all' ? { source: filterSource } : {};
+      // Build params object with all filters
+      const params = {};
+      if (filterSource !== 'all') params.source = filterSource;
+      if (filterRelevance !== 'all') params.relevance_score = filterRelevance;
+      if (filterReviewStatus !== 'all') params.review_status = filterReviewStatus;
+      
       const response = await axios.get(`${API_URL}/api/regulatory-updates`, { params });
       setUpdates(response.data.data || []);
+      
+      // Mark visible updates as seen (ADD-ON)
+      const updateIds = (response.data.data || []).map(u => u.id);
+      if (updateIds.length > 0) {
+        axios.post(`${API_URL}/api/mark-as-seen`, updateIds).catch(err => console.error('Failed to mark as seen:', err));
+      }
     } catch (err) {
       setError('Failed to fetch updates: ' + (err.response?.data?.detail || err.message));
     } finally {
@@ -132,6 +149,28 @@ function App() {
 
   // Fetch AI analysis for a regulatory update
   const fetchAiAnalysis = async (updateId) => {
+
+  // Handle Fetch Now button (ADD-ON feature)
+  const handleFetchNow = async () => {
+    setFetchingNow(true);
+    setFetchMessage('');
+    setError(null);
+    try {
+      const response = await axios.post(`${API_URL}/api/fetch-now`);
+      setFetchMessage(response.data.message || 'Fetch complete');
+      
+      // Refresh data
+      await fetchUpdates();
+      await fetchStats();
+      
+      setTimeout(() => setFetchMessage(''), 5000);
+    } catch (err) {
+      setError('Fetch failed: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setFetchingNow(false);
+    }
+  };
+
     setLoading(true);
     setFeedbackSubmitted(false);
     setExistingFeedback(null);
@@ -218,12 +257,12 @@ function App() {
     setAiAnalysis(null);
   };
 
-  // Initial load
+  // Initial load and filter changes (EXTENDED with new filters)
   useEffect(() => {
     fetchUpdates();
     fetchStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSource]);
+  }, [filterSource, filterRelevance, filterReviewStatus]);
 
   // Handle form input change
   const handleInputChange = (e) => {
@@ -649,16 +688,46 @@ function App() {
         {/* Compliance Dashboard Tab */}
         {activeTab === 'compliance-dashboard' && (
           <div data-testid="compliance-dashboard-content">
-            {/* Filters */}
+            {/* Filters Section (EXTENDED) */}
             <div className="bg-white rounded-lg shadow p-6 mb-6" data-testid="filters-section">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">Regulatory Updates</h2>
-                <div className="flex items-center space-x-4">
-                  <label className="text-sm font-medium text-gray-700">Filter by Source:</label>
+                <button
+                  onClick={handleFetchNow}
+                  disabled={fetchingNow}
+                  className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center space-x-2"
+                  data-testid="fetch-now-button"
+                >
+                  {fetchingNow ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Fetching...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>⟳</span>
+                      <span>Fetch Now</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              {/* Fetch Message (ADD-ON) */}
+              {fetchMessage && (
+                <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm">
+                  {fetchMessage}
+                </div>
+              )}
+              
+              {/* Filter Controls (EXTENDED - keeping existing + adding new) */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Existing Source Filter */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">Source:</label>
                   <select
                     value={filterSource}
                     onChange={(e) => setFilterSource(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     data-testid="source-filter"
                   >
                     <option value="all">All Sources</option>
@@ -666,12 +735,48 @@ function App() {
                     <option value="SEBI">SEBI</option>
                     <option value="RBI_RSS">RBI_RSS</option>
                   </select>
+                </div>
+                
+                {/* NEW: Relevance Filter */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">Relevance:</label>
+                  <select
+                    value={filterRelevance}
+                    onChange={(e) => setFilterRelevance(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    data-testid="relevance-filter"
+                  >
+                    <option value="all">All Relevance</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="LOW">LOW</option>
+                    <option value="NOT_RELEVANT">NOT RELEVANT</option>
+                  </select>
+                </div>
+                
+                {/* NEW: Review Status Filter */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">Review Status:</label>
+                  <select
+                    value={filterReviewStatus}
+                    onChange={(e) => setFilterReviewStatus(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    data-testid="review-status-filter"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="reviewed">Reviewed</option>
+                    <option value="unreviewed">Unreviewed</option>
+                  </select>
+                </div>
+                
+                {/* Existing Refresh Button (keeping for compatibility) */}
+                <div className="flex items-end">
                   <button
                     onClick={fetchUpdates}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                     data-testid="refresh-button"
                   >
-                    Refresh
+                    Refresh View
                   </button>
                 </div>
               </div>
@@ -694,15 +799,25 @@ function App() {
                   <div
                     key={update.id}
                     onClick={() => handleUpdateClick(update)}
-                    className="bg-white rounded-lg shadow-md p-6 hover:shadow-xl transition-all cursor-pointer border-l-4 border-blue-500 hover:border-blue-700"
+                    className={`rounded-lg shadow-md p-6 hover:shadow-xl transition-all cursor-pointer border-l-4 ${
+                      update.is_new ? 'bg-blue-50 border-blue-600' : 'bg-white border-blue-500'
+                    } hover:border-blue-700`}
                     data-testid="update-card"
                   >
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2 hover:text-blue-600" data-testid="update-title">
-                          {update.title}
-                        </h3>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600" data-testid="update-title">
+                            {update.title}
+                          </h3>
+                          {/* NEW Badge (ADD-ON) */}
+                          {update.is_new && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-red-500 text-white animate-pulse">
+                              NEW
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500 flex-wrap">
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800" data-testid="update-source">
                             {update.source}
                           </span>
@@ -713,6 +828,12 @@ function App() {
                           }`} data-testid="update-status">
                             {update.is_processed ? '✓ Processed' : '⏳ Unprocessed'}
                           </span>
+                          {/* Review Status Badge (ADD-ON) */}
+                          {update.review_status === 'reviewed' && (
+                            <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
+                              ✓ Reviewed
+                            </span>
+                          )}
                         </div>
                       </div>
                       <button

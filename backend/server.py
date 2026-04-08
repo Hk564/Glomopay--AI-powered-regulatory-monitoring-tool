@@ -220,22 +220,38 @@ async def get_updates(
     limit: int = 50,
     offset: int = 0,
     source: Optional[str] = None,
-    is_processed: Optional[bool] = None
+    is_processed: Optional[bool] = None,
+    relevance_score: Optional[str] = None,
+    review_status: Optional[str] = None,
+    is_new: Optional[bool] = None
 ):
     """
     Get list of regulatory updates with optional filtering.
-    Supports pagination and filtering by source and processing status.
+    Supports pagination and filtering by source, processing status, relevance, review status, and new status.
     """
     try:
-        query = supabase.table("regulatory_updates").select("*")
+        # Base query with AI analysis joined for relevance_score filtering
+        if relevance_score:
+            # Join with ai_analysis to filter by relevance_score
+            query = supabase.table("regulatory_updates").select("""
+                *,
+                ai_analysis!inner(relevance_score)
+            """)
+            query = query.eq("ai_analysis.relevance_score", relevance_score)
+        else:
+            query = supabase.table("regulatory_updates").select("*")
         
         # Apply filters
         if source:
             query = query.eq("source", source)
         if is_processed is not None:
             query = query.eq("is_processed", is_processed)
+        if review_status:
+            query = query.eq("review_status", review_status)
+        if is_new is not None:
+            query = query.eq("is_new", is_new)
         
-        # Apply pagination and ordering
+        # Apply pagination and ordering (newest first)
         result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         
         return {
@@ -272,6 +288,101 @@ async def get_update(update_id: str):
         
     except HTTPException:
         raise
+
+
+@app.post("/api/mark-as-seen")
+async def mark_as_seen(update_ids: List[str]):
+    """
+    Mark multiple regulatory updates as seen
+    """
+    try:
+        for update_id in update_ids:
+            supabase.table("regulatory_updates").update({
+                "is_seen": True
+            }).eq("id", update_id).execute()
+        
+        return {
+            "success": True,
+            "message": f"Marked {len(update_ids)} updates as seen"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to mark updates as seen: {str(e)}"
+        )
+
+
+@app.post("/api/mark-as-reviewed")
+async def mark_as_reviewed(update_id: str, reviewed: bool = True):
+    """
+    Mark a regulatory update as reviewed or unreviewed
+    """
+    try:
+        result = supabase.table("regulatory_updates").update({
+            "review_status": "reviewed" if reviewed else "unreviewed"
+        }).eq("id", update_id).execute()
+        
+        return {
+            "success": True,
+            "message": f"Update marked as {'reviewed' if reviewed else 'unreviewed'}"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update review status: {str(e)}"
+        )
+
+
+@app.post("/api/fetch-now")
+async def fetch_now():
+    """
+    Manual trigger for data ingestion and AI processing
+    Fetches new regulatory updates and processes them
+    """
+    try:
+        import subprocess
+        
+        # This would normally trigger n8n workflow
+        # For now, we'll run the AI processor on unprocessed items
+        
+        # Get unprocessed count before
+        before_stats = supabase.table("regulatory_updates").select("*", count="exact").eq("is_processed", False).execute()
+        unprocessed_before = before_stats.count if hasattr(before_stats, 'count') else len(before_stats.data)
+        
+        # Run AI processor
+        result = subprocess.run(
+            ["/root/.venv/bin/python", "/app/backend/ai_processor.py"],
+            capture_output=True,
+            text=True,
+            timeout=180
+        )
+        
+        # Get unprocessed count after
+        after_stats = supabase.table("regulatory_updates").select("*", count="exact").eq("is_processed", False).execute()
+        unprocessed_after = after_stats.count if hasattr(after_stats, 'count') else len(after_stats.data)
+        
+        processed_count = unprocessed_before - unprocessed_after
+        
+        return {
+            "success": True,
+            "message": f"Processing complete. {processed_count} updates analyzed.",
+            "processed_count": processed_count,
+            "output": result.stdout[-500:] if result.stdout else None  # Last 500 chars
+        }
+        
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            detail="Processing timed out after 3 minutes"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to trigger fetch: {str(e)}"
+        )
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
