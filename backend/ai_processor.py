@@ -264,7 +264,7 @@ Remember: Return ONLY valid JSON in the specified format. No markdown, no explan
         return None
     
     async def store_analysis(self, regulatory_update_id: str, analysis: Dict, raw_response: str) -> bool:
-        """Store AI analysis in database"""
+        """Store AI analysis in database and update is_processed flag"""
         try:
             data = {
                 "id": str(uuid.uuid4()),
@@ -282,8 +282,16 @@ Remember: Return ONLY valid JSON in the specified format. No markdown, no explan
                 "created_at": datetime.utcnow().isoformat()
             }
             
+            # Insert AI analysis
             result = supabase.table("ai_analysis").insert(data).execute()
             print(f"  💾 Analysis stored successfully")
+            
+            # Update is_processed flag in regulatory_updates table
+            supabase.table("regulatory_updates").update({
+                "is_processed": True
+            }).eq("id", regulatory_update_id).execute()
+            print(f"  ✅ Updated is_processed flag to True")
+            
             return True
             
         except Exception as e:
